@@ -1,9 +1,16 @@
 package com.pixplicity.bikefinder;
 
+import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 
 import android.util.Log;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -19,7 +26,12 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import java.util.ArrayList;
 
-public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
+public class MainActivity extends FragmentActivity implements
+        OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+
+    private static final int RC_LOCATION = 1001;
+
+    private static final LatLng DEFAULT_LOCATION = new LatLng(52.3745291, 4.7585319);
 
     private static final String TAG = MainActivity.class.getSimpleName();
     private GoogleMap mMap;
@@ -27,6 +39,10 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     private FirebaseDatabase mFirebaseDatabase;
     private ArrayList<Bike> mBikes;
     private ChildEventListener mChildEventListener;
+
+    private GoogleApiClient mGoogleApiClient;
+    private Location mLastLocation;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +52,12 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+            .addConnectionCallbacks(this)
+            .addOnConnectionFailedListener(this)
+            .addApi(LocationServices.API)
+            .build();
 
         // By enabling persistence, any data that we sync while online will be
         // persisted to disk and available offline, even when we restart the app.
@@ -94,6 +116,24 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         mDatabaseReference.addChildEventListener(mChildEventListener);
     }
 
+    protected void onStart() {
+        mGoogleApiClient.connect();
+        super.onStart();
+    }
+
+    protected void onStop() {
+        mGoogleApiClient.disconnect();
+        super.onStop();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case RC_LOCATION:
+                onLocationPermitted(false);
+                break;
+        }
+    }
 
     /**
      * Manipulates the map once available.
@@ -107,6 +147,8 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
+        onLocationPermitted(true);
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(DEFAULT_LOCATION));
 
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
@@ -126,13 +168,44 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         initializeMarkers();
     }
 
+    private void onLocationPermitted(boolean request) {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            if (request) {
+                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, RC_LOCATION);
+            }
+        } else {
+            mMap.setMyLocationEnabled(true);
+            boolean centerOnLocation = mLastLocation == null;
+            mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
+                    mGoogleApiClient);
+            if (mLastLocation != null && centerOnLocation) {
+                LatLng latLng = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
+                CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(latLng, 15f);
+                mMap.animateCamera(cameraUpdate);
+            }
+        }
+    }
+
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+        onLocationPermitted(false);
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+    }
+
     private void initializeMarkers() {
         // TODO fetch from Firebase
 
-        // Add a marker in Sydney and move the camera
-        LatLng latLng = new LatLng(-34, 151);
-        String title = "Marker in Sydney";
-        addMarker(latLng, title, false);
+        //addMarker(latLng, title, false);
     }
 
     private void addMarker(LatLng latLng, String title, boolean animateTo) {
