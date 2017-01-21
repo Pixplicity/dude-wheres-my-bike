@@ -12,7 +12,7 @@ public class Bike {
   public Bike() {
   }
 
-  public void setUuid() {
+  public void generateUuid() {
     mUuid = UUID.randomUUID().toString();
   }
 
