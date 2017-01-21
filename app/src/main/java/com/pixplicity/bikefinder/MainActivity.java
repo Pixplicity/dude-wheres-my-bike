@@ -474,7 +474,9 @@ public class MainActivity extends FragmentActivity implements
         if (uuid != null) {
             // Remove the bike and its marker
             mBikes.remove(uuid);
-            mMarkers.remove(uuid);
+            Marker marker = mMarkers.remove(uuid);
+            // Remove the marker from the map
+            marker.remove();
 
             // Inform Firebase of removal
             mBikesReference.child(uuid).removeValue();
