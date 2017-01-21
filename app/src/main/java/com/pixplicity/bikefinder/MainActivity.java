@@ -9,16 +9,23 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.View;
 import android.widget.Toast;
 
 import com.facebook.AccessToken;
+import com.facebook.AccessTokenTracker;
 import com.facebook.CallbackManager;
 import com.facebook.FacebookCallback;
 import com.facebook.FacebookException;
 import com.facebook.FacebookSdk;
 import com.facebook.login.LoginResult;
 import com.facebook.login.widget.LoginButton;
+import com.google.android.gms.auth.api.Auth;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.auth.api.signin.GoogleSignInResult;
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.SignInButton;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdate;
@@ -36,6 +43,7 @@ import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FacebookAuthProvider;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -43,7 +51,7 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.pixplicity.bikefinder.utils.DatabaseUtils;
 
-import java.util.ArrayList;
+import java.util.HashMap;
 
 public class MainActivity extends FragmentActivity implements
         OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
@@ -51,6 +59,7 @@ public class MainActivity extends FragmentActivity implements
     private static final String TAG = MainActivity.class.getSimpleName();
 
     private static final int RC_LOCATION = 1001;
+    private static final int RC_SIGN_IN = 1002;
 
     private static final LatLng DEFAULT_LOCATION = new LatLng(52.3745291, 4.7585319);
 
@@ -65,8 +74,10 @@ public class MainActivity extends FragmentActivity implements
 
     private GoogleApiClient mGoogleApiClient;
     private CallbackManager mCallbackManager;
+    private AccessTokenTracker mAccessTokenTracker;
 
-    private ArrayList<Bike> mBikes;
+    private final HashMap<String, Bike> mBikes = new HashMap<>();
+    private final HashMap<String, Marker> mMarkers = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,12 +86,32 @@ public class MainActivity extends FragmentActivity implements
         // Must be called before inflating the layout with the LoginButton
         FacebookSdk.sdkInitialize(this);
 
+        mAccessTokenTracker = new AccessTokenTracker() {
+            @Override
+            protected void onCurrentAccessTokenChanged(AccessToken oldAccessToken, AccessToken currentAccessToken) {
+                if (currentAccessToken == null) {
+                    FirebaseAuth.getInstance().signOut();
+                }
+            }
+        };
+        mAccessTokenTracker.startTracking();
+
         setContentView(R.layout.activity_main);
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+        // Set the dimensions of the sign-in button.
+        SignInButton signInButton = (SignInButton) findViewById(R.id.sign_in_button);
+        signInButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(mGoogleApiClient);
+                startActivityForResult(signInIntent, RC_SIGN_IN);
+            }
+        });
 
         // Initialize Facebook Login button
         mCallbackManager = CallbackManager.Factory.create();
@@ -106,64 +137,57 @@ public class MainActivity extends FragmentActivity implements
             }
         });
 
+        // Configure sign-in to request the user's ID, email address, and basic
+        // profile. ID and basic profile are included in DEFAULT_SIGN_IN.
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build();
         mGoogleApiClient = new GoogleApiClient.Builder(this)
-            .addConnectionCallbacks(this)
-            .addOnConnectionFailedListener(this)
-            .addApi(LocationServices.API)
-            .build();
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .enableAutoManage(this, this)
+                .addApi(LocationServices.API)
+                .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
+                .build();
 
         mFirebaseDatabase = DatabaseUtils.getFirebaseDatabase();
-        mDatabaseReference = mFirebaseDatabase.getReference();
-
-        mBikes = new ArrayList<>();
-
-        // for testing only
-        Bike testBike = new Bike();
-        testBike.setUuid();
-        testBike.setTitle("Blah blah blah");
-        testBike.setLocationLatitude(DEFAULT_LOCATION.latitude);
-        testBike.setLocationLongitude(DEFAULT_LOCATION.longitude);
-        mDatabaseReference.child(testBike.getUuid()).setValue(testBike);
+        String userUuid = "67f92871-80f6-4397-be67-aa90fca88dcd";
+        mDatabaseReference = mFirebaseDatabase.getReference("users/" + userUuid + "/bikes");
 
         mChildEventListener = new ChildEventListener() {
             @Override
             public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                Bike bike = dataSnapshot.getValue(Bike.class);
-                mBikes.add(bike);
-                Log.v(TAG, "child added" + bike.getUuid());
-                Log.v(TAG, "mbikes size" + mBikes.size());
+                synchronized (mBikes) {
+                    Bike bike = dataSnapshot.getValue(Bike.class);
+                    addBike(bike, false);
+                }
             }
 
             @Override
             public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-                for(Bike bike : mBikes){
-                    if(dataSnapshot.getKey().equals(bike.getUuid())){
-                        mBikes.remove(bike);
-                        Bike newBike = dataSnapshot.getValue(Bike.class);
-                        mBikes.add(newBike);
-                        Log.v(TAG, "child updated");
-                    }
+                synchronized (mBikes) {
+                    String uuid = dataSnapshot.getKey();
+                    Bike bike = dataSnapshot.getValue(Bike.class);
+                    addBike(bike, false);
+                    Log.v(TAG, "bike updated: " + bike);
                 }
             }
 
             @Override
             public void onChildRemoved(DataSnapshot dataSnapshot) {
-                for(Bike bike : mBikes){
-                    if(dataSnapshot.getKey().equals(bike.getUuid())){
-                        mBikes.remove(bike);
-                        Log.v(TAG, "child removed");
-                    }
+                synchronized (mBikes) {
+                    String uuid = dataSnapshot.getKey();
+                    removeBike(uuid);
                 }
             }
 
             @Override
             public void onChildMoved(DataSnapshot dataSnapshot, String s) {
-
             }
 
             @Override
             public void onCancelled(DatabaseError databaseError) {
-
             }
         };
         mDatabaseReference.addChildEventListener(mChildEventListener);
@@ -202,6 +226,12 @@ public class MainActivity extends FragmentActivity implements
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mAccessTokenTracker.stopTracking();
+    }
+
+    @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         switch (requestCode) {
             case RC_LOCATION:
@@ -215,7 +245,13 @@ public class MainActivity extends FragmentActivity implements
         super.onActivityResult(requestCode, resultCode, data);
 
         // Pass the activity result back to the Facebook SDK
-        mCallbackManager.onActivityResult(requestCode, resultCode, data);
+        if (mCallbackManager.onActivityResult(requestCode, resultCode, data)) {
+            // Handled by the Facebook SDK
+        } else if (requestCode == RC_SIGN_IN) {
+            // Result returned from launching the Intent from GoogleSignInApi.getSignInIntent(...);
+            GoogleSignInResult result = Auth.GoogleSignInApi.getSignInResultFromIntent(data);
+            handleSignInResult(result);
+        }
     }
 
     /**
@@ -236,19 +272,21 @@ public class MainActivity extends FragmentActivity implements
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
             public void onMapClick(LatLng latLng) {
-                addMarker(latLng, null, true);
+                Bike bike = new Bike();
+                bike.generateUuid();
+                bike.setLocationLatitude(latLng.latitude);
+                bike.setLocationLongitude(latLng.longitude);
+                addBike(bike, true);
             }
         });
 
         mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
-                removeMarker(marker);
+                removeBike(marker);
                 return false;
             }
         });
-
-        initializeMarkers();
     }
 
     private void onLocationPermitted(boolean request) {
@@ -307,28 +345,99 @@ public class MainActivity extends FragmentActivity implements
              });
     }
 
-
-    private void initializeMarkers() {
-        // TODO fetch from Firebase
-
-        //addMarker(latLng, title, false);
+    private void handleSignInResult(GoogleSignInResult result) {
+        Log.d(TAG, "handleSignInResult:" + result.isSuccess());
+        if (result.isSuccess()) {
+            // Signed in successfully, show authenticated UI.
+            GoogleSignInAccount account = result.getSignInAccount();
+            handleGoogleSignIn(account);
+            //mStatusTextView.setText(getString(R.string.signed_in_fmt, acct.getDisplayName()));
+            //updateUI(true);
+        } else {
+            // Signed out, show unauthenticated UI.
+            //updateUI(false);
+        }
     }
 
-    private void addMarker(LatLng latLng, String title, boolean animateTo) {
-        mMap.addMarker(new MarkerOptions().position(latLng).title(title));
-        CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLng(latLng);
-        if (animateTo) {
-            mMap.animateCamera(cameraUpdate);
+    private void handleGoogleSignIn(GoogleSignInAccount account) {
+        Log.d(TAG, "handleGoogleSignIn:" + account.getId());
+        Toast.makeText(this, "Welcome, " + account.getDisplayName(), Toast.LENGTH_LONG).show();
+
+        AuthCredential credential = GoogleAuthProvider.getCredential(account.getIdToken(), null);
+        mAuth.signInWithCredential(credential)
+             .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
+                 @Override
+                 public void onComplete(@NonNull Task<AuthResult> task) {
+                     Log.d(TAG, "signInWithCredential:onComplete:" + task.isSuccessful());
+
+                     // If sign in fails, display a message to the user. If sign in succeeds
+                     // the auth state listener will be notified and logic to handle the
+                     // signed in user can be handled in the listener.
+                     if (!task.isSuccessful()) {
+                         Log.w(TAG, "signInWithCredential", task.getException());
+                         Toast.makeText(MainActivity.this, "Authentication failed.",
+                                 Toast.LENGTH_SHORT).show();
+                     }
+                     // ...
+                 }
+             });
+    }
+
+    private void addBike(Bike bike, boolean fromUi) {
+        String uuid = bike.getUuid();
+        mBikes.put(uuid, bike);
+        Log.v(TAG, "bike: " + bike.toString());
+        Log.v(TAG, "bikes: " + mBikes.size());
+
+        Double lat = bike.getLocationLatitude();
+        Double lon = bike.getLocationLongitude();
+        if (lat == null || lon == null) {
+            // We can't show a bike without a location here
+            return;
+        }
+        LatLng latLng = new LatLng(lat, lon);
+        Marker marker = mMarkers.get(uuid);
+        if (marker == null) {
+            // Create the marker
+            marker = mMap.addMarker(new MarkerOptions().position(latLng).title(bike.getTitle()));
+            mMarkers.put(uuid, marker);
         } else {
-            mMap.moveCamera(cameraUpdate);
+            // Update the marker
+            marker.setTitle(bike.getTitle());
+            marker.setPosition(latLng);
         }
 
-        // TODO inform Firebase
+        if (fromUi) {
+            // Center the map on the new marker
+            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLng(latLng);
+            mMap.animateCamera(cameraUpdate);
+
+            // Add it to Firebase
+            mDatabaseReference.child(uuid).setValue(bike);
+        }
     }
 
-    private void removeMarker(Marker marker) {
+    private void removeBike(Marker marker) {
         marker.remove();
-
-        // TODO inform Firebase
+        String uuid = null;
+        for (String markerUuid : mMarkers.keySet()) {
+            if (mMarkers.get(markerUuid).equals(marker)) {
+                uuid = markerUuid;
+                break;
+            }
+        }
+        removeBike(uuid);
     }
+
+    private void removeBike(String uuid) {
+        if (uuid != null) {
+            // Remove the bike and its marker
+            mBikes.remove(uuid);
+            mMarkers.remove(uuid);
+
+            // Inform Firebase of removal
+            mDatabaseReference.child(uuid).removeValue();
+        }
+    }
+
 }
