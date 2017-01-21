@@ -1,6 +1,9 @@
 package com.pixplicity.bikefinder;
 
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 
 import com.google.android.gms.maps.CameraUpdate;
@@ -14,6 +17,7 @@ import com.google.android.gms.maps.model.MarkerOptions;
 
 public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
 
+    private static final int RC_LOCATION = 1001;
     private GoogleMap mMap;
 
     @Override
@@ -26,6 +30,14 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         mapFragment.getMapAsync(this);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case RC_LOCATION:
+                onLocationPermitted(false);
+                break;
+        }
+    }
 
     /**
      * Manipulates the map once available.
@@ -39,6 +51,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
+        onLocationPermitted(true);
 
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
@@ -56,6 +69,19 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         });
 
         initializeMarkers();
+    }
+
+    private void onLocationPermitted(boolean request) {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            if (request) {
+                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, RC_LOCATION);
+            }
+        } else {
+            mMap.setMyLocationEnabled(true);
+        }
     }
 
     private void initializeMarkers() {
