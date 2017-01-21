@@ -3,6 +3,7 @@ package com.pixplicity.bikefinder;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 
+import android.util.Log;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -11,10 +12,21 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.firebase.database.ChildEventListener;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import java.util.ArrayList;
 
 public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
 
+    private static final String TAG = MainActivity.class.getSimpleName();
     private GoogleMap mMap;
+    private DatabaseReference mDatabaseReference;
+    private FirebaseDatabase mFirebaseDatabase;
+    private ArrayList<Bike> mBikes;
+    private ChildEventListener mChildEventListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -24,6 +36,62 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+        // By enabling persistence, any data that we sync while online will be
+        // persisted to disk and available offline, even when we restart the app.
+        if (mFirebaseDatabase == null) {
+            mFirebaseDatabase = FirebaseDatabase.getInstance();
+            FirebaseDatabase.getInstance().setPersistenceEnabled(true);
+        }
+        mDatabaseReference = mFirebaseDatabase.getReference();
+
+        mBikes = new ArrayList<>();
+
+        // for testing only
+        Bike testBike = new Bike();
+        mDatabaseReference.child(testBike.getUuid()).setValue(testBike);
+
+        mChildEventListener = new ChildEventListener() {
+            @Override
+            public void onChildAdded(DataSnapshot dataSnapshot, String s) {
+                Bike bike = dataSnapshot.getValue(Bike.class);
+                mBikes.add(bike);
+                Log.v(TAG, "child added");
+            }
+
+            @Override
+            public void onChildChanged(DataSnapshot dataSnapshot, String s) {
+                for(Bike bike : mBikes){
+                    if(dataSnapshot.getKey().equals(bike.getUuid())){
+                        mBikes.remove(bike);
+                        Bike newBike = dataSnapshot.getValue(Bike.class);
+                        mBikes.add(newBike);
+                        Log.v(TAG, "child updated");
+                    }
+                }
+            }
+
+            @Override
+            public void onChildRemoved(DataSnapshot dataSnapshot) {
+                for(Bike bike : mBikes){
+                    if(dataSnapshot.getKey().equals(bike.getUuid())){
+                        mBikes.remove(bike);
+                        Log.v(TAG, "child removed");
+                    }
+                }
+            }
+
+            @Override
+            public void onChildMoved(DataSnapshot dataSnapshot, String s) {
+
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+
+            }
+        };
+        mDatabaseReference.addChildEventListener(mChildEventListener);
     }
 
 
@@ -85,4 +153,15 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         // TODO inform Firebase
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mDatabaseReference.addChildEventListener(mChildEventListener);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mDatabaseReference.removeEventListener(mChildEventListener);
+    }
 }
