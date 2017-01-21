@@ -7,8 +7,8 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
-
 import android.util.Log;
+
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationServices;
@@ -25,6 +25,8 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.pixplicity.bikefinder.utils.DatabaseUtils;
+
 import java.util.ArrayList;
 
 public class MainActivity extends FragmentActivity implements
@@ -60,12 +62,7 @@ public class MainActivity extends FragmentActivity implements
             .addApi(LocationServices.API)
             .build();
 
-        // By enabling persistence, any data that we sync while online will be
-        // persisted to disk and available offline, even when we restart the app.
-        if (mFirebaseDatabase == null) {
-            mFirebaseDatabase = FirebaseDatabase.getInstance();
-            FirebaseDatabase.getInstance().setPersistenceEnabled(true);
-        }
+        mFirebaseDatabase = DatabaseUtils.getFirebaseDatabase();
         mDatabaseReference = mFirebaseDatabase.getReference();
 
         mBikes = new ArrayList<>();
