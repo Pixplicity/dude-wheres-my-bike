@@ -397,6 +397,9 @@ public class MainActivity extends FragmentActivity implements
     }
 
     private String getOfflineUserId() {
+        if (BuildConfig.DEBUG) {
+            return "logged-out-test";
+        }
         String userId = Prefs.getString(USER_ID, null);
         if (userId == null) {
             // We need to generate a new one and save it
