@@ -225,6 +225,23 @@ public class MainActivity extends FragmentActivity implements
                     userId = user.getUid();
                     displayName = user.getDisplayName();
                     Log.d(TAG, "onAuthStateChanged:signed_in:" + userId);
+
+                    // First, stop listing for changes
+                    mBikesReference.removeEventListener(mChildEventListener);
+                    // Delete this user
+                    mUserReference.removeValue();
+
+                    mUserReference = mDatabaseReference.child("users").child(userId);
+                    mBikesReference = mUserReference.child("bikes");
+
+                    // Add each bike that we had before logging in
+                    for (String bikeUuid : mBikes.keySet()) {
+                        Bike bike = mBikes.get(bikeUuid);
+                        mBikesReference.child(bikeUuid).setValue(bike);
+                    }
+                    // Listen for changes again, but on the new reference
+                    mBikesReference.addChildEventListener(mChildEventListener);
+
                     mUserReference.child("uid").setValue(userId);
                 } else {
                     // User is signed out
