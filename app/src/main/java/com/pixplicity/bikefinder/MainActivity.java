@@ -1,5 +1,6 @@
 package com.pixplicity.bikefinder;
 
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -50,11 +51,13 @@ import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.pixplicity.bikefinder.utils.DatabaseUtils;
+import com.pixplicity.easyprefs.library.Prefs;
 
 import java.util.HashMap;
 
 public class MainActivity extends FragmentActivity implements
-        OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+        OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener {
 
     private static final String TAG = MainActivity.class.getSimpleName();
 
@@ -62,11 +65,13 @@ public class MainActivity extends FragmentActivity implements
     private static final int RC_SIGN_IN = 1002;
 
     private static final LatLng DEFAULT_LOCATION = new LatLng(52.3745291, 4.7585319);
+    private static final String USER_ID = "user_id";
 
     private GoogleMap mMap;
     private Location mLastLocation;
 
     private DatabaseReference mDatabaseReference;
+    private DatabaseReference mUserReference;
     private FirebaseDatabase mFirebaseDatabase;
     private ChildEventListener mChildEventListener;
     private FirebaseAuth mAuth;
@@ -78,6 +83,7 @@ public class MainActivity extends FragmentActivity implements
 
     private final HashMap<String, Bike> mBikes = new HashMap<>();
     private final HashMap<String, Marker> mMarkers = new HashMap<>();
+    private User mUser;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -151,9 +157,26 @@ public class MainActivity extends FragmentActivity implements
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build();
 
+        // Initialize the Prefs class
+        new Prefs.Builder()
+                .setContext(this)
+                .setMode(ContextWrapper.MODE_PRIVATE)
+                .setPrefsName(getPackageName())
+                .setUseDefaultSharedPreference(true)
+                .build();
+
+        // Check if it's the first time the user uses the app
+        String userId = Prefs.getString(USER_ID, null);
+        mUser = new User();
+        if (userId == null) {
+            mUser.setUserId();
+        } else {
+            mUser.setUserId(USER_ID);
+        }
+
         mFirebaseDatabase = DatabaseUtils.getFirebaseDatabase();
-        String userUuid = "67f92871-80f6-4397-be67-aa90fca88dcd";
-        mDatabaseReference = mFirebaseDatabase.getReference("users/" + userUuid + "/bikes");
+        mDatabaseReference = mFirebaseDatabase.getReference();
+        mUserReference = mDatabaseReference.child(mUser.getUserId());
 
         mChildEventListener = new ChildEventListener() {
             @Override
@@ -200,9 +223,15 @@ public class MainActivity extends FragmentActivity implements
                 if (user != null) {
                     // User is signed in
                     Log.d(TAG, "onAuthStateChanged:signed_in:" + user.getUid());
+                    mUserReference.child("user_id").setValue(user.getUid());
+                    mUser.setName(user.getDisplayName());
+                    mUser.setUserId(user.getUid());
                 } else {
                     // User is signed out
                     Log.d(TAG, "onAuthStateChanged:signed_out");
+                    //TODO: Change firebase path name
+                    mUser.setName(null);
+                    mUser.setUserId();
                 }
                 // ...
             }
@@ -229,6 +258,7 @@ public class MainActivity extends FragmentActivity implements
     protected void onDestroy() {
         super.onDestroy();
         mAccessTokenTracker.stopTracking();
+        Prefs.putString(USER_ID, mUser.getUserId());
     }
 
     @Override
@@ -255,13 +285,12 @@ public class MainActivity extends FragmentActivity implements
     }
 
     /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
+     * Manipulates the map once available. This callback is triggered when the map is ready to be
+     * used. This is where we can add markers or lines, add listeners or move the camera. In this
+     * case, we just add a marker near Sydney, Australia. If Google Play services is not installed on
+     * the device, the user will be prompted to install it inside the SupportMapFragment. This method
+     * will only be triggered once the user has installed Google Play services and returned to the
+     * app.
      */
     @Override
     public void onMapReady(GoogleMap googleMap) {
@@ -292,10 +321,12 @@ public class MainActivity extends FragmentActivity implements
     private void onLocationPermitted(boolean request) {
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+                &&
+                ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                        != PackageManager.PERMISSION_GRANTED) {
             if (request) {
-                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, RC_LOCATION);
+                ActivityCompat.requestPermissions(this,
+                        new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, RC_LOCATION);
             }
         } else {
             mMap.setMyLocationEnabled(true);
