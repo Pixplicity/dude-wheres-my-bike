@@ -54,6 +54,7 @@ import com.pixplicity.bikefinder.utils.DatabaseUtils;
 import com.pixplicity.easyprefs.library.Prefs;
 
 import java.util.HashMap;
+import java.util.UUID;
 
 public class MainActivity extends FragmentActivity implements
         OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks,
@@ -71,7 +72,7 @@ public class MainActivity extends FragmentActivity implements
     private Location mLastLocation;
 
     private DatabaseReference mDatabaseReference;
-    private DatabaseReference mUserReference;
+    private DatabaseReference mUserReference, mBikesReference;
     private FirebaseDatabase mFirebaseDatabase;
     private ChildEventListener mChildEventListener;
     private FirebaseAuth mAuth;
@@ -166,17 +167,14 @@ public class MainActivity extends FragmentActivity implements
                 .build();
 
         // Check if it's the first time the user uses the app
-        String userId = Prefs.getString(USER_ID, null);
         mUser = new User();
-        if (userId == null) {
-            mUser.setUserId();
-        } else {
-            mUser.setUserId(USER_ID);
-        }
+        String userId = getOfflineUserId();
+        mUser.setUserId(userId);
 
         mFirebaseDatabase = DatabaseUtils.getFirebaseDatabase();
         mDatabaseReference = mFirebaseDatabase.getReference();
-        mUserReference = mDatabaseReference.child(mUser.getUserId());
+        mUserReference = mDatabaseReference.child("users").child(mUser.getUserId());
+        mBikesReference = mUserReference.child("bikes");
 
         mChildEventListener = new ChildEventListener() {
             @Override
@@ -213,27 +211,30 @@ public class MainActivity extends FragmentActivity implements
             public void onCancelled(DatabaseError databaseError) {
             }
         };
-        mDatabaseReference.addChildEventListener(mChildEventListener);
+        mBikesReference.addChildEventListener(mChildEventListener);
 
         mAuth = FirebaseAuth.getInstance();
         mAuthListener = new FirebaseAuth.AuthStateListener() {
             @Override
             public void onAuthStateChanged(@NonNull FirebaseAuth firebaseAuth) {
                 FirebaseUser user = firebaseAuth.getCurrentUser();
+                String userId;
+                String displayName = null;
                 if (user != null) {
                     // User is signed in
-                    Log.d(TAG, "onAuthStateChanged:signed_in:" + user.getUid());
-                    mUserReference.child("user_id").setValue(user.getUid());
-                    mUser.setName(user.getDisplayName());
-                    mUser.setUserId(user.getUid());
+                    userId = user.getUid();
+                    displayName = user.getDisplayName();
+                    Log.d(TAG, "onAuthStateChanged:signed_in:" + userId);
+                    mUserReference.child("uid").setValue(userId);
                 } else {
                     // User is signed out
                     Log.d(TAG, "onAuthStateChanged:signed_out");
                     //TODO: Change firebase path name
-                    mUser.setName(null);
-                    mUser.setUserId();
+                    userId = getOfflineUserId();
                 }
-                // ...
+                mUser.setName(displayName);
+                mUser.setUserId(userId);
+                Prefs.putString(USER_ID, userId);
             }
         };
     }
@@ -258,7 +259,6 @@ public class MainActivity extends FragmentActivity implements
     protected void onDestroy() {
         super.onDestroy();
         mAccessTokenTracker.stopTracking();
-        Prefs.putString(USER_ID, mUser.getUserId());
     }
 
     @Override
@@ -376,6 +376,16 @@ public class MainActivity extends FragmentActivity implements
              });
     }
 
+    private String getOfflineUserId() {
+        String userId = Prefs.getString(USER_ID, null);
+        if (userId == null) {
+            // We need to generate a new one and save it
+            userId = UUID.randomUUID().toString();
+            Prefs.putString(USER_ID, userId);
+        }
+        return userId;
+    }
+
     private void handleSignInResult(GoogleSignInResult result) {
         Log.d(TAG, "handleSignInResult:" + result.isSuccess());
         if (result.isSuccess()) {
@@ -444,7 +454,7 @@ public class MainActivity extends FragmentActivity implements
             mMap.animateCamera(cameraUpdate);
 
             // Add it to Firebase
-            mDatabaseReference.child(uuid).setValue(bike);
+            mBikesReference.child(uuid).setValue(bike);
         }
     }
 
@@ -467,7 +477,7 @@ public class MainActivity extends FragmentActivity implements
             mMarkers.remove(uuid);
 
             // Inform Firebase of removal
-            mDatabaseReference.child(uuid).removeValue();
+            mBikesReference.child(uuid).removeValue();
         }
     }
 

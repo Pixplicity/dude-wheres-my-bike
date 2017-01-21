@@ -1,8 +1,6 @@
 package com.pixplicity.bikefinder;
 
 
-import java.util.UUID;
-
 public class User {
 
   private String mUserId;
@@ -13,10 +11,6 @@ public class User {
 
   public String getUserId() {
     return mUserId;
-  }
-
-  public void setUserId() {
-    mUserId = UUID.randomUUID().toString();
   }
 
   public void setUserId(String userId) {
