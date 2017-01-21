@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "428393654015",
+    "firebase_url": "https://bikefinder-156309.firebaseio.com",
+    "project_id": "bikefinder-156309",
+    "storage_bucket": "bikefinder-156309.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:428393654015:android:85aedd63b3e3340c",
+        "android_client_info": {
+          "package_name": "com.pixplicity.bikefinder"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "428393654015-8khibaq08roakv7q0nbno2duos5cqf5b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBPKyMWONtZqihOpxU0hoDV9rgIrVmlqw"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
