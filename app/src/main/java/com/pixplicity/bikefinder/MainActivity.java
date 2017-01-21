@@ -220,21 +220,41 @@ public class MainActivity extends FragmentActivity implements
                 FirebaseUser user = firebaseAuth.getCurrentUser();
                 String userId;
                 String displayName = null;
+
+                // First, stop listing for changes
+                mBikesReference.removeEventListener(mChildEventListener);
+
                 if (user != null) {
                     // User is signed in
                     userId = user.getUid();
                     displayName = user.getDisplayName();
                     Log.d(TAG, "onAuthStateChanged:signed_in:" + userId);
-                    mUserReference.child("uid").setValue(userId);
+
+                    if (!mUser.getUserId().equals(userId)) {
+                        // Delete the previous user
+                        mUserReference.removeValue();
+                    }
                 } else {
                     // User is signed out
                     Log.d(TAG, "onAuthStateChanged:signed_out");
-                    //TODO: Change firebase path name
                     userId = getOfflineUserId();
                 }
+
                 mUser.setName(displayName);
                 mUser.setUserId(userId);
-                Prefs.putString(USER_ID, userId);
+
+                mUserReference = mDatabaseReference.child("users").child(userId);
+                mBikesReference = mUserReference.child("bikes");
+
+                // Add each bike that we had before logging in
+                for (String bikeUuid : mBikes.keySet()) {
+                    Bike bike = mBikes.get(bikeUuid);
+                    mBikesReference.child(bikeUuid).setValue(bike);
+                }
+                // Listen for changes again, but on the new reference
+                mBikesReference.addChildEventListener(mChildEventListener);
+
+                mUserReference.child("uid").setValue(userId);
             }
         };
     }
@@ -377,6 +397,9 @@ public class MainActivity extends FragmentActivity implements
     }
 
     private String getOfflineUserId() {
+        if (BuildConfig.DEBUG) {
+            return "logged-out-test";
+        }
         String userId = Prefs.getString(USER_ID, null);
         if (userId == null) {
             // We need to generate a new one and save it
@@ -475,8 +498,10 @@ public class MainActivity extends FragmentActivity implements
             // Remove the bike and its marker
             mBikes.remove(uuid);
             Marker marker = mMarkers.remove(uuid);
-            // Remove the marker from the map
-            marker.remove();
+            if (marker != null) {
+                // Remove the marker from the map
+                marker.remove();
+            }
 
             // Inform Firebase of removal
             mBikesReference.child(uuid).removeValue();
