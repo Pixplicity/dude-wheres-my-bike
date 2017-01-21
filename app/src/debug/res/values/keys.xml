@@ -1,3 +1,5 @@
 <resources>
+    <string name="facebook_app_id">741290229359503</string>
+    <string name="fb_login_protocol_scheme">fb741290229359503</string>
     <string name="google_maps_key" templateMergeStrategy="preserve" translatable="false">AIzaSyCbJneRgNAeX8kgScjW9JKBMvQgCImK0yw</string>
 </resources>
