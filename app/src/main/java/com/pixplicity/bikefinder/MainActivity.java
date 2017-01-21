@@ -72,6 +72,10 @@ public class MainActivity extends FragmentActivity implements
 
         // for testing only
         Bike testBike = new Bike();
+        testBike.setUuid();
+        testBike.setTitle("Blah blah blah");
+        testBike.setLocationLatitude(DEFAULT_LOCATION.latitude);
+        testBike.setLocationLongitude(DEFAULT_LOCATION.longitude);
         mDatabaseReference.child(testBike.getUuid()).setValue(testBike);
 
         mChildEventListener = new ChildEventListener() {
@@ -79,7 +83,8 @@ public class MainActivity extends FragmentActivity implements
             public void onChildAdded(DataSnapshot dataSnapshot, String s) {
                 Bike bike = dataSnapshot.getValue(Bike.class);
                 mBikes.add(bike);
-                Log.v(TAG, "child added");
+                Log.v(TAG, "child added" + bike.getUuid());
+                Log.v(TAG, "mbikes size" + mBikes.size());
             }
 
             @Override
@@ -225,17 +230,5 @@ public class MainActivity extends FragmentActivity implements
         marker.remove();
 
         // TODO inform Firebase
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        mDatabaseReference.addChildEventListener(mChildEventListener);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        mDatabaseReference.removeEventListener(mChildEventListener);
     }
 }

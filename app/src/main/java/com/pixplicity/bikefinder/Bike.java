@@ -1,16 +1,23 @@
 package com.pixplicity.bikefinder;
 
-import com.google.android.gms.maps.model.LatLng;
 import java.util.UUID;
 
 public class Bike {
 
   private String mUuid;
   private String mTitle;
-  private LatLng mLocation;
+  private Double mLocationLatitude;
+  private Double mLocationLongitude;
 
   public Bike() {
+  }
+
+  public void setUuid() {
     mUuid = UUID.randomUUID().toString();
+  }
+
+  public void setUuid(String uuid) {
+    mUuid = uuid;
   }
 
   public String getUuid() {
@@ -25,12 +32,19 @@ public class Bike {
     mTitle = title;
   }
 
-  public LatLng getLocation() {
-    return mLocation;
+  public Double getLocationLongitude() {
+    return mLocationLongitude;
   }
 
-  public void setLocation(LatLng location) {
-    mLocation = location;
+  public void setLocationLongitude(Double locationLongitude) {
+    mLocationLongitude = locationLongitude;
   }
 
+  public Double getLocationLatitude() {
+    return mLocationLatitude;
+  }
+
+  public void setLocationLatitude(Double locationLatitude) {
+    mLocationLatitude = locationLatitude;
+  }
 }
