@@ -188,7 +188,6 @@ public class MainActivity extends FragmentActivity implements
             @Override
             public void onChildChanged(DataSnapshot dataSnapshot, String s) {
                 synchronized (mBikes) {
-                    String uuid = dataSnapshot.getKey();
                     Bike bike = dataSnapshot.getValue(Bike.class);
                     addBike(bike, false);
                     Log.v(TAG, "bike updated: " + bike);
@@ -328,12 +327,26 @@ public class MainActivity extends FragmentActivity implements
                 addBike(bike, true);
             }
         });
-
+        // FIXME it shouldn't be so easy to delete bikes
         mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
                 removeBike(marker);
                 return false;
+            }
+        });
+        mMap.setOnMarkerDragListener(new GoogleMap.OnMarkerDragListener() {
+            @Override
+            public void onMarkerDragStart(Marker marker) {
+            }
+
+            @Override
+            public void onMarkerDrag(Marker marker) {
+            }
+
+            @Override
+            public void onMarkerDragEnd(Marker marker) {
+                updateBike(marker);
             }
         });
     }
@@ -447,6 +460,21 @@ public class MainActivity extends FragmentActivity implements
              });
     }
 
+    @Nullable
+    private Bike getBikeForMarker(Marker marker) {
+        String uuid = null;
+        for (String markerUuid : mMarkers.keySet()) {
+            if (mMarkers.get(markerUuid).equals(marker)) {
+                uuid = markerUuid;
+                break;
+            }
+        }
+        if (uuid == null) {
+            return null;
+        }
+        return mBikes.get(uuid);
+    }
+
     private void addBike(Bike bike, boolean fromUi) {
         String uuid = bike.getUuid();
         mBikes.put(uuid, bike);
@@ -464,6 +492,7 @@ public class MainActivity extends FragmentActivity implements
         if (marker == null) {
             // Create the marker
             marker = mMap.addMarker(new MarkerOptions().position(latLng).title(bike.getTitle()));
+            marker.setDraggable(true);
             mMarkers.put(uuid, marker);
         } else {
             // Update the marker
@@ -481,16 +510,32 @@ public class MainActivity extends FragmentActivity implements
         }
     }
 
+    private void updateBike(Marker marker) {
+        // Update Firebase
+        Bike bike = getBikeForMarker(marker);
+        if (bike != null) {
+            // Update the bike's position first
+            bike.setLocationLatitude(marker.getPosition().latitude);
+            bike.setLocationLongitude(marker.getPosition().longitude);
+            updateBike(bike);
+        }
+    }
+
+    private void updateBike(Bike bike) {
+        mBikesReference.child(bike.getUuid()).setValue(bike);
+    }
+
     private void removeBike(Marker marker) {
         marker.remove();
-        String uuid = null;
-        for (String markerUuid : mMarkers.keySet()) {
-            if (mMarkers.get(markerUuid).equals(marker)) {
-                uuid = markerUuid;
-                break;
-            }
+        Bike bike = getBikeForMarker(marker);
+        removeBike(bike);
+    }
+
+    private void removeBike(Bike bike) {
+        if (bike != null) {
+            String uuid = bike.getUuid();
+            removeBike(uuid);
         }
-        removeBike(uuid);
     }
 
     private void removeBike(String uuid) {
